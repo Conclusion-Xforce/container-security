@@ -3,7 +3,7 @@ arg go_version=1.20
 
 run export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y \
     redis-server \
-    ca-certificates \
+    curl \
     golang-${go_version}
 
 env PATH=$PATH:/usr/lib/go-${go_version}/bin

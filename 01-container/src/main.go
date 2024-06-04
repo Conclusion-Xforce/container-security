@@ -3,9 +3,9 @@
  The service will also have a health check endpoint to check the status of the service
 
  The service exposes the following endpoints:
-   /health 		 	  | GET  		| returns the status of the service			
-   /store/KEY 		  | GET  		| retrieves the value of the key from the redis service			
-   /store/KEY/VALUE   | POST 		| stores a key value pair in the redis service			
+   /health 		 	  | GET  		| returns the status of the service
+   /state/KEY 		  | GET  		| retrieves the value of the key from the redis service
+   /state/KEY/VALUE   | POST 		| stores a key value pair in the redis service
 
  The service needs the following environment variables to be set:
    SERVICE_PORT - the port on which the service will run (defaults to 80)
@@ -23,56 +23,63 @@ import (
 	"log"
 	"net/http"
 	"os"
-	
-	"github.com/redis/go-redis/v9"
+
 	"github.com/gorilla/mux"
+	"github.com/redis/go-redis/v9"
 )
 
-var client *redis.Client
-var ctx = context.Background()
+const (
+	defaultRedisPort   = "6379"
+	defaultServicePort = "80"
+	redisHostEnv       = "REDIS_HOST"
+	redisPortEnv       = "REDIS_PORT"
+	servicePortEnv     = "SERVICE_PORT"
+)
 
-func initRedisClient() {
-	redisHost := os.Getenv("REDIS_HOST")
-	redisPort := os.Getenv("REDIS_PORT")
-
-	client = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
-		DB:       0,
-	})
-
-	_, err := client.Ping(ctx).Result()
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-	}
-}
+var (
+	client *redis.Client
+	ctx    = context.Background()
+)
 
 func main() {
-	initRedisClient()
+	redisHost := getEnv(redisHostEnv, "")
+	redisPort := getEnv(redisPortEnv, defaultRedisPort)
+	servicePort := getEnv(servicePortEnv, defaultServicePort)
+
+	if redisHost == "" {
+		log.Fatalf("%s must be set, exiting", redisHostEnv)
+	}
+
+	err := initRedisClient(redisHost, redisPort)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Connected to Redis at %s:%s", redisHost, redisPort)
 
 	r := mux.NewRouter()
 
 	r.HandleFunc("/health", healthHandler).Methods("GET")
-	r.HandleFunc("/store/{key}", retrieveHandler).Methods("GET")
-	r.HandleFunc("/store/{key}/", retrieveHandler).Methods("GET")
-	r.HandleFunc("/store/{key}/{value}", storeHandler).Methods("POST")
+	r.HandleFunc("/state/{key}", retrieveHandler).Methods("GET")
+	r.HandleFunc("/state/{key}/", retrieveHandler).Methods("GET")
+	r.HandleFunc("/state/{key}/{value}", storeHandler).Methods("POST")
 
-	port := os.Getenv("SERVICE_PORT")
-	if port == "" {
-		port = "80"
+	log.Printf("Starting server on port %s", servicePort)
+	log.Fatal(http.ListenAndServe(":"+servicePort, r))
+}
+
+func initRedisClient(redisHost string, redisPort string) error {
+	client = redis.NewClient(&redis.Options{
+		Addr: fmt.Sprintf("%s:%s", redisHost, redisPort),
+		DB:   0,
+	})
+
+	_, err := client.Ping(ctx).Result()
+	if err != nil {
+		return fmt.Errorf("Failed to connect to Redis: %v", err)
 	}
 
-	log.Printf("Starting server on port %s", port)
-	log.Fatal(http.ListenAndServe(":" + port, r))
-}
-
-func logRequest(r *http.Request, statusCode int) {
-	log.Printf("%s %s %s %s %d", r.RemoteAddr, r.Method, r.URL.Path, r.Proto, statusCode)
-}
-
-func writeResponse(w http.ResponseWriter, statusCode int, response string) {
-	w.WriteHeader(statusCode)
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(response + "\n"))
+	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +103,7 @@ func storeHandler(w http.ResponseWriter, r *http.Request) {
 	err := client.Set(ctx, key, value, 0).Err()
 	if err != nil {
 		logRequest(r, http.StatusInternalServerError)
-		writeResponse(w, http.StatusInternalServerError, "Failed to store " + key)
+		writeResponse(w, http.StatusInternalServerError, "Failed to store "+key)
 		return
 	}
 
@@ -120,10 +127,28 @@ func retrieveHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		logRequest(r, http.StatusInternalServerError)
-		writeResponse(w, http.StatusInternalServerError, "Failed to retrieve " + key)
+		writeResponse(w, http.StatusInternalServerError, "Failed to retrieve "+key)
 		return
 	}
 
 	logRequest(r, http.StatusOK)
 	writeResponse(w, http.StatusOK, value)
+}
+
+func getEnv(key string, defaultVal string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	log.Printf("%s not set. Defaulting to %s", key, defaultVal)
+	return defaultVal
+}
+
+func logRequest(r *http.Request, statusCode int) {
+	log.Printf("%s %s %s %s %d", r.RemoteAddr, r.Method, r.URL.Path, r.Proto, statusCode)
+}
+
+func writeResponse(w http.ResponseWriter, statusCode int, response string) {
+	w.WriteHeader(statusCode)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(response + "\n"))
 }
