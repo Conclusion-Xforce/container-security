@@ -1,8 +1,10 @@
 # Do better
 
+[![Docker Repository on Quay](https://quay.io/repository/conclusionxforce/bad-container/status "Docker Repository on Quay")](https://quay.io/repository/conclusionxforce/bad-container)
+
 The goal of this exercise is to improve the security and quality of the provided containerized application by implementing good practices and security measures. Focus on the Dockerfile, even though I'm sure the Go code can be improved too. Use common sense and the good practices we have discussed in class.
 
-For reference: a build of the provided Dockerfile is available at `quay.io/conclusionxforce/bad-container`.
+For reference: a build of the provided Dockerfile is available at [quay.io/conclusionxforce/bad-container](quay.io/conclusionxforce/bad-container).
 
 Feel free to use any tools or resources you find useful. The final result should be a Dockerfile that builds a secure and efficient container image. Make sure to document your findings and the changes you made!
 
