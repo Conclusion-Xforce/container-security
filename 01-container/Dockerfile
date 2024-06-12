@@ -1,21 +1,16 @@
-from ubuntu:20.04
-arg go_version=1.20
+FROM registry.access.redhat.com/ubi9/go-toolset:1.20 AS builder
 
-run export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y \
-    redis-server \
-    curl \
-    golang-${go_version}
+COPY src/* .
 
-env PATH=$PATH:/usr/lib/go-${go_version}/bin
+RUN go mod tidy
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /opt/app-root/server
 
-run mkdir /app
+FROM registry.access.redhat.com/ubi9/ubi-micro:latest
+ARG SERVICE_PORT=8080
 
-add src/* /app/
+COPY --from=builder /opt/app-root/server /app/server
 
-run chmod +x /app/start.sh
+EXPOSE ${SERVICE_PORT}
+ENV SERVICE_PORT=${SERVICE_PORT}
 
-run cd /app/ && go mod tidy && go build -o /app/server
-
-expose 80
-
-cmd ["/app/start.sh"]
+CMD ["/app/server"]
